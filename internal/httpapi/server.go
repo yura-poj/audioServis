@@ -41,6 +41,9 @@ func New(database *store.Store, files *media.Files) http.Handler {
 	mux.HandleFunc("PUT /api/v1/tracks/{id}/like", s.authorize(false, s.like))
 	mux.HandleFunc("DELETE /api/v1/tracks/{id}/like", s.authorize(false, s.like))
 	mux.HandleFunc("GET /api/v1/media/{id}", s.authorize(true, s.serveAudio))
+	mux.HandleFunc("PUT /api/v1/history/{id}", s.authorize(false, s.recordPlay))
+	mux.HandleFunc("GET /api/v1/history", s.authorize(false, s.history))
+	mux.HandleFunc("GET /api/v1/tracks/{id}/listening-stats", s.authorize(false, s.listeningStats))
 	return mux
 }
 

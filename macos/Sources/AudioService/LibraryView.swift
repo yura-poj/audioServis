@@ -332,6 +332,25 @@ private struct PlayerBar: View {
     @ObservedObject var playback: Playback
 
     var body: some View {
+        VStack(spacing: 4) {
+            controls
+            if playback.current != nil {
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                    let head = playback.playhead
+                    TrackSlider(head: head) { position in
+                        if let head { playback.seek(to: position, in: head.item) }
+                    }
+                    .id(head?.item)
+                }
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 8)
+        .frame(minHeight: 58)
+        .background(MusicTheme.panel)
+    }
+
+    private var controls: some View {
         HStack {
             Image(systemName: "waveform")
                 .font(.title2)
@@ -354,9 +373,41 @@ private struct PlayerBar: View {
         .buttonStyle(.borderless)
         .tint(MusicTheme.text)
         .disabled(playback.current == nil)
-        .padding(.horizontal, 22)
-        .frame(height: 58)
-        .background(MusicTheme.panel)
+    }
+}
+
+private struct TrackSlider: View {
+    let head: Playback.Playhead?
+    let seek: (Double) -> Void
+    @State private var draft: Double?
+
+    var body: some View {
+        let position = draft ?? head?.position ?? 0
+        HStack(spacing: 10) {
+            Text(time(position))
+            Slider(value: Binding(get: { position }, set: { value in
+                if draft != nil { draft = value } else { seek(value) }
+            }), in: 0...(head?.duration ?? 1), onEditingChanged: { editing in
+                if editing {
+                    draft = head?.position
+                } else if let target = draft {
+                    draft = nil
+                    seek(target)
+                }
+            })
+            .tint(MusicTheme.accent)
+            .disabled(head == nil)
+            .accessibilityLabel("Позиция трека")
+            .accessibilityValue(time(position))
+            Text(head.map { time($0.duration) } ?? "–:––")
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(MusicTheme.muted)
+    }
+
+    private func time(_ seconds: Double) -> String {
+        let elapsed = Duration.seconds(seconds.rounded(.down))
+        return seconds >= 3600 ? elapsed.formatted(.time(pattern: .hourMinuteSecond)) : elapsed.formatted(.time(pattern: .minuteSecond))
     }
 }
 

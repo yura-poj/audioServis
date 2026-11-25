@@ -45,6 +45,7 @@ struct APIClient: Sendable {
 
     private struct ErrorResponse: Decodable {
         struct Detail: Decodable {
+            let code: String?
             let message: String
         }
         let error: Detail
@@ -130,6 +131,16 @@ struct APIClient: Sendable {
 
     func like(_ id: String, liked: Bool) async throws -> Track {
         try await decode("tracks/\(id)/like", method: liked ? "PUT" : "DELETE")
+    }
+
+    func sendPlay(_ id: String, snapshot: ListeningSnapshot) async throws {
+        var request = authorized(endpoint("history/\(id)"), method: "PUT")
+        request.httpBody = try JSONEncoder().encode(snapshot)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (body, reply) = try await Self.session.data(for: request)
+        if (reply as? HTTPURLResponse)?.statusCode == 404,
+           (try? decoder().decode(ErrorResponse.self, from: body))?.error.code == "track_not_found" { return }
+        try check(reply, body: body)
     }
 
     func upload(_ file: URL, title: String, playlist: String?) async throws -> Track {

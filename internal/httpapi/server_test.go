@@ -151,6 +151,7 @@ func TestPersonalLibrary(t *testing.T) {
 		t.Fatal("foreign tracks appeared in another catalog")
 	}
 
+	testListeningHistory(t, trackA.ID, request, check, authA, authB)
 	mediaPath := "/media/" + trackA.ID
 	cookie := map[string]string{"Cookie": "audioservice_media=" + keyA}
 	check(request("GET", "/me", nil, cookie), 401)
@@ -191,6 +192,13 @@ func TestPersonalLibrary(t *testing.T) {
 	check(request("GET", mediaPath, nil, authA), 200)
 	check(request("DELETE", "/tracks/"+trackA.ID, nil, authA), 204)
 	check(request("GET", mediaPath, nil, authA), 404)
+	after := readJSON[struct {
+		Items []store.Play `json:"items"`
+	}](t, check(request("GET", "/history", nil, authA), 200))
+	if len(after.Items) != 0 {
+		t.Fatalf("deleted track history: %+v", after.Items)
+	}
+
 }
 
 func readJSON[T any](t *testing.T, data []byte) T {

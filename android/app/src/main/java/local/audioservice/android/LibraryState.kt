@@ -3,6 +3,7 @@ package local.audioservice.android
 import android.app.Application
 import android.content.ComponentName
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
@@ -25,6 +26,7 @@ internal class LibraryState(private val app: Application) {
     private val main = Handler(Looper.getMainLooper())
     private val requests = Executors.newSingleThreadExecutor()
     private val accounts = AccountStore(app)
+    val history = ListeningHistory(app.filesDir.resolve("history"))
     val offline = OfflineLibrary(app.filesDir.resolve("downloads"), ::changed)
 
     var onChanged: (() -> Unit)? = null
@@ -58,10 +60,29 @@ internal class LibraryState(private val app: Application) {
     val currentTrackId: String?
         get() = controller?.currentMediaItem?.mediaId
 
+    data class QueueEntry(val queue: String, val index: Int)
+    data class Playhead(val entry: QueueEntry, val position: Long, val duration: Long)
+
+    val playhead: Playhead?
+        get() {
+            val player = controller ?: return null
+            val queue = player.currentMediaItem?.mediaMetadata?.extras?.getString("queue") ?: return null
+            val duration = player.duration
+            if (duration <= 0 || player.playbackState == Player.STATE_ENDED || !player.isCurrentMediaItemSeekable ||
+                !player.isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)) return null
+            return Playhead(QueueEntry(queue, player.currentMediaItemIndex), player.currentPosition.coerceIn(0, duration), duration)
+        }
+
+    fun seek(entry: QueueEntry, position: Long) {
+        val head = playhead ?: return
+        if (entry == head.entry) controller?.seekTo(position.coerceIn(0, head.duration))
+    }
+
     val activePlayback: Boolean
         get() = controller?.playWhenReady == true && controller?.playbackState != Player.STATE_ENDED
 
     init {
+        history.select(profile, api)
         offline.select(profile)
     }
 
@@ -140,6 +161,7 @@ internal class LibraryState(private val app: Application) {
         playlist = null
         profile = selected
         api = client
+        history.select(selected, client)
         offline.select(selected)
         error = null
     }
@@ -204,11 +226,11 @@ internal class LibraryState(private val app: Application) {
         request({ it.tracks() }) { catalog ->
             tracks = catalog
             offline.reconcile(catalog)
-            play(catalog.shuffled())
+            play(catalog.shuffled(), reason = "shuffle")
         }
     }
 
-    fun play(tracks: List<Track>, startId: String? = null, localOnly: Boolean = false) {
+    fun play(tracks: List<Track>, startId: String? = null, localOnly: Boolean = false, reason: String = if (startId == null) "queue" else "selection") {
         val player = controller
         if (player == null) {
             preparePlayback()
@@ -216,12 +238,18 @@ internal class LibraryState(private val app: Application) {
             changed()
             return
         }
+        val owner = profile ?: return
+        val context = Bundle().apply {
+            putString("scope", owner.scope())
+            putString("queue", UUID.randomUUID().toString())
+            putString("reason", reason)
+        }
         val items = tracks.mapNotNull { track ->
             val local = offline.file(track)
             val source = local?.let { Uri.fromFile(it) } ?: if (localOnly) null else api?.media(track.id)
             source?.let {
                 MediaItem.Builder().setUri(it).setMediaId(track.id)
-                    .setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).build())
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setExtras(context).build())
                     .build()
             }
         }

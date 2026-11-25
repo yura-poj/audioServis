@@ -12,11 +12,15 @@ import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.text.InputType
 import android.text.TextUtils
+import android.text.format.DateUtils
 import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.widget.Button
@@ -26,7 +30,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 class MainActivity : Activity() {
     private enum class Tab(val label: String) {
@@ -41,6 +48,15 @@ class MainActivity : Activity() {
     private var scroll: ScrollView? = null
     private var loginForm: LoginForm? = null
     private var screenKey = ""
+    private var timeline: TrackSlider? = null
+    private var renderPending = false
+    private val clock = Handler(Looper.getMainLooper())
+    private val updatePosition = object : Runnable {
+        override fun run() {
+            timeline?.update()
+            clock.postDelayed(this, 500)
+        }
+    }
     private var uploadPlaylist: String? = null
     private val ink get() = getColor(R.color.music_text)
     private val muted get() = getColor(R.color.music_muted)
@@ -64,6 +80,18 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (renderPending) render()
+        clock.post(updatePosition)
+    }
+
+    override fun onStop() {
+        clock.removeCallbacks(updatePosition)
+        timeline?.dragging = null
+        super.onStop()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("tab", tab.name)
         outState.putString("uploadPlaylist", uploadPlaylist)
@@ -72,12 +100,20 @@ class MainActivity : Activity() {
 
     private fun render() {
         val profile = model.profile
+        val nextKey = "${profile?.id}:$tab:${model.playlist?.id}"
+        val drag = timeline?.dragging
+        if (profile != null && drag != null && drag == model.playhead?.entry && screenKey == nextKey) {
+            renderPending = true
+            return
+        }
+        val restoreSliderFocus = timeline?.hasFocus() == true && screenKey == nextKey
+        renderPending = false
+        timeline = null
         if (profile == null) {
             showLogin()
             return
         }
         loginForm = null
-        val nextKey = "${profile.id}:$tab:${model.playlist?.id}"
         val scrollY = if (screenKey == nextKey) scroll?.scrollY ?: 0 else 0
         screenKey = nextKey
         val page = root()
@@ -106,6 +142,7 @@ class MainActivity : Activity() {
         line(page)
         renderPlayer(page)
         setContentView(page)
+        if (restoreSliderFocus) timeline?.requestFocus()
         if (scrollY > 0) scroller.post { scroller.scrollTo(0, scrollY) }
     }
 
@@ -324,6 +361,74 @@ class MainActivity : Activity() {
         for (index in 0 until controls.childCount) controls.getChildAt(index).isEnabled = title != null
         bar.addView(controls)
         page.addView(bar)
+        if (title != null) {
+            timeline = TrackSlider().also { page.addView(it) }
+        }
+    }
+
+    private inner class TrackSlider : LinearLayout(this@MainActivity), SeekBar.OnSeekBarChangeListener {
+        var dragging: LibraryState.QueueEntry? = null
+        private var shown: LibraryState.Playhead? = null
+        private val elapsed = label("0:00", 12, muted)
+        private val total = label("–:––", 12, muted)
+        private val slider = object : SeekBar(this@MainActivity) {
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL) dragging = null
+                return super.dispatchTouchEvent(event)
+            }
+        }
+
+        init {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), 0, dp(16), dp(4))
+            setBackgroundColor(panel)
+            slider.max = 10000
+            slider.contentDescription = "Позиция трека"
+            slider.progressTintList = enabledColors(accent, muted)
+            slider.thumbTintList = enabledColors(accent, muted)
+            addView(elapsed)
+            addView(slider, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(total)
+            slider.setOnSeekBarChangeListener(this)
+            update()
+        }
+
+        fun update() {
+            if (dragging != null) return
+            val head = model.playhead
+            shown = head
+            slider.isEnabled = head != null
+            slider.progress = head?.let { (it.position.toDouble() / it.duration * slider.max).roundToInt() } ?: 0
+            elapsed.text = time(head?.position ?: 0)
+            total.text = head?.let { time(it.duration) } ?: "–:––"
+        }
+
+        override fun onStartTrackingTouch(bar: SeekBar) {
+            dragging = shown?.entry
+        }
+
+        override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+            val head = shown ?: return
+            if (!fromUser || timeline !== this) return
+            val target = targetTime(head, progress)
+            elapsed.text = time(target)
+            if (dragging == null) model.seek(head.entry, target)
+        }
+
+        override fun onStopTrackingTouch(bar: SeekBar) {
+            val entry = dragging
+            dragging = null
+            val head = shown
+            if (timeline !== this) return
+            if (head != null && entry == head.entry) model.seek(entry, targetTime(head, bar.progress))
+            update()
+            if (renderPending) post { if (renderPending) render() }
+        }
+
+        private fun targetTime(head: LibraryState.Playhead, progress: Int) =
+            (progress.toDouble() / slider.max * head.duration).roundToLong()
+
+        private fun time(milliseconds: Long) = DateUtils.formatElapsedTime(milliseconds / 1000)
     }
 
     private fun showSettings() {

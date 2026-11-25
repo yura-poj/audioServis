@@ -49,6 +49,7 @@ final class LibraryModel: ObservableObject {
         self.offline = offline
         self.playback = playback
         offline.select(profile)
+        playback.history.select(profile, api: try? client())
     }
 
     func connect(address: String, key: String) async -> Bool {
@@ -159,10 +160,10 @@ final class LibraryModel: ObservableObject {
         }
     }
 
-    func start(_ list: [Track], from id: String? = nil, localOnly: Bool = false) {
+    func start(_ list: [Track], from id: String? = nil, localOnly: Bool = false, reason: String? = nil) {
         guard let offline, let playback, !list.isEmpty else { return }
         let api = localOnly ? nil : try? client()
-        playback.play(list, from: id, offline: offline, api: api)
+        playback.play(list, from: id, offline: offline, api: api, reason: reason ?? (id == nil ? "queue" : "selection"))
     }
 
     func shuffle() async {
@@ -171,7 +172,7 @@ final class LibraryModel: ObservableObject {
             guard self.session == session else { return }
             tracks = catalog
             offline?.reconcile(catalog)
-            start(catalog.shuffled())
+            start(catalog.shuffled(), reason: "shuffle")
         }
     }
 
@@ -186,6 +187,7 @@ final class LibraryModel: ObservableObject {
         selection = .library
         loadedKey = key
         self.profile = profile
+        playback?.history.select(profile, api: try? client())
     }
 
     private func client() throws -> APIClient {

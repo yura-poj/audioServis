@@ -75,6 +75,13 @@ internal class APIClient(val base: String, val key: String) {
         jsonRequest(if (liked) "PUT" else "DELETE", api("tracks/$track/like"))
     )
 
+    fun sendPlay(play: ListeningPlay) {
+        try { jsonRequest("PUT", api("history/${play.id}"), play.json()) }
+        catch (_: MissingHistoryTrack) { /* The owner deleted this track before delivery. */ }
+    }
+
+    private class MissingHistoryTrack : IOException()
+
     fun upload(input: InputStream, title: String, playlist: String?) {
         val address = api("tracks").buildUpon().appendQueryParameter("title", title)
         if (playlist != null) address.appendQueryParameter("playlist_id", playlist)
@@ -141,10 +148,11 @@ internal class APIClient(val base: String, val key: String) {
         if (code == 401) throw IOException("Сервер отклонил личный ключ.")
         val message = runCatching {
             connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use {
-                JSONObject(it.readText()).getJSONObject("error").getString("message")
+                JSONObject(it.readText()).getJSONObject("error")
             }
         }.getOrNull()
-        throw IOException(message ?: "Запрос завершился ошибкой HTTP $code.")
+        if (code == 404 && message?.optString("code") == "track_not_found") throw MissingHistoryTrack()
+        throw IOException(message?.optString("message") ?: "Запрос завершился ошибкой HTTP $code.")
     }
 
     private fun <T> items(reply: JSONObject, parse: (JSONObject) -> T): List<T> {
