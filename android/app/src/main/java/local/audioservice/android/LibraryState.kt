@@ -125,6 +125,10 @@ internal class LibraryState(private val app: Application) {
         changed()
     }
 
+    var downloadLikedTracks: Boolean
+        get() = profile?.let(accounts::downloadLikedTracks) ?: true
+        set(enabled) { profile?.let { accounts.setDownloadLikedTracks(it, enabled) } }
+
     private fun selectAccount(selected: Profile?, client: APIClient?) {
         epoch = UUID.randomUUID()
         connecting = false
@@ -188,10 +192,11 @@ internal class LibraryState(private val app: Application) {
     }
 
     fun toggleLike(track: Track) {
+        val downloadOnLike = downloadLikedTracks
         request({ it.like(track.id, !track.liked) }) { updated ->
             tracks = tracks.map { if (it.id == updated.id) updated else it }
             playlistTracks = playlistTracks.map { if (it.id == updated.id) updated else it }
-            if (updated.liked) api?.let { offline.enqueue(updated, it) }
+            if (updated.liked && downloadOnLike && downloadLikedTracks) api?.let { offline.enqueue(updated, it) }
         }
     }
 

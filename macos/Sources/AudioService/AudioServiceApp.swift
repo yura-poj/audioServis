@@ -146,12 +146,14 @@ final class LibraryModel: ObservableObject {
     }
 
     func toggleLike(_ track: Track) async {
+        guard let profile else { return }
+        let downloadOnLike = profile.downloadLikedTracks
         await run { api, session in
             let updated = try await api.like(track.id, liked: !track.liked)
             guard self.session == session else { return }
             if let index = tracks.firstIndex(where: { $0.id == track.id }) { tracks[index] = updated }
             if let index = playlistTracks.firstIndex(where: { $0.id == track.id }) { playlistTracks[index] = updated }
-            if updated.liked {
+            if updated.liked && downloadOnLike && profile.downloadLikedTracks {
                 offline?.enqueue(updated, api: api)
             }
         }

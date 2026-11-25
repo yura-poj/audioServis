@@ -21,7 +21,15 @@ internal data class Profile(val base: String, val id: String, val displayName: S
 
 internal class AccountStore(context: Context) {
     private val preferences = context.getSharedPreferences("account", Context.MODE_PRIVATE)
+    private val settings = context.getSharedPreferences("account_settings", Context.MODE_PRIVATE)
     private val alias = "audioservice-client-key"
+
+    fun downloadLikedTracks(profile: Profile): Boolean =
+        settings.getBoolean("downloadLikedTracks.${profile.scope()}", true)
+
+    fun setDownloadLikedTracks(profile: Profile, enabled: Boolean) {
+        settings.edit().putBoolean("downloadLikedTracks.${profile.scope()}", enabled).apply()
+    }
 
     fun active(): Profile? = runCatching {
         val raw = preferences.getString("profile", null) ?: return null

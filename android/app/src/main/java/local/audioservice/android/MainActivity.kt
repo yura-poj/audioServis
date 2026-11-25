@@ -151,6 +151,7 @@ class MainActivity : Activity() {
         val account = control(profile.displayName) {}
         account.setOnClickListener {
             menu(account, listOf(
+                "Настройки" to { showSettings() },
                 "Сменить аккаунт…" to { showConnectDialog(profile.base) },
                 "Выйти" to {
                     tab = Tab.LIBRARY
@@ -323,6 +324,16 @@ class MainActivity : Activity() {
         for (index in 0 until controls.childCount) controls.getChildAt(index).isEnabled = title != null
         bar.addView(controls)
         page.addView(bar)
+    }
+
+    private fun showSettings() {
+        val options = arrayOf("Скачивать понравившиеся треки на это устройство")
+        AlertDialog.Builder(this).setTitle("Настройки")
+            .setMultiChoiceItems(options, booleanArrayOf(model.downloadLikedTracks)) { _, _, enabled ->
+                model.downloadLikedTracks = enabled
+            }
+            .setPositiveButton("Готово", null)
+            .show()
     }
 
     private fun showConnectDialog(initialAddress: String) {

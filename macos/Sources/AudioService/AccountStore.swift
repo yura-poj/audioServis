@@ -11,6 +11,12 @@ struct Profile: Codable, Equatable, Sendable {
         let value = Data("\(base.absoluteString)\u{0}\(id)".utf8)
         return SHA256.hash(data: value).map { String(format: "%02x", $0) }.joined()
     }
+
+    var downloadLikedTracksKey: String { "downloadLikedTracks.\(scope)" }
+
+    var downloadLikedTracks: Bool {
+        UserDefaults.standard.object(forKey: downloadLikedTracksKey) as? Bool ?? true
+    }
 }
 
 @MainActor

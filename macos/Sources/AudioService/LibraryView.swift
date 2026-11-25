@@ -6,6 +6,7 @@ struct LibraryView: View {
     @ObservedObject var offline: OfflineLibrary
     @ObservedObject var playback: Playback
     @State private var connectionOpen = false
+    @State private var settingsOpen = false
     @State private var importing = false
     @State private var uploadPlaylist: String?
     @State private var editing: EditTarget?
@@ -59,6 +60,12 @@ struct LibraryView: View {
                 }
             }
         }
+        .sheet(isPresented: $settingsOpen) {
+            if let profile = model.profile {
+                AccountSettingsView(profile: profile)
+                    .id(profile.scope)
+            }
+        }
         .alert(item: $deleting) { target in
             Alert(
                 title: Text(target.label),
@@ -104,6 +111,7 @@ struct LibraryView: View {
                 VStack(spacing: 0) {
                     Divider()
                     Menu {
+                        Button("Настройки…") { settingsOpen = true }
                         Button("Сменить аккаунт…") { connectionOpen = true }
                         Button("Выйти", role: .destructive) { model.logout() }
                     } label: {
@@ -293,6 +301,30 @@ struct LibraryView: View {
             .fixedSize()
         }
         .padding(.vertical, 5)
+    }
+}
+
+private struct AccountSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage private var downloadLikedTracks: Bool
+
+    init(profile: Profile) {
+        _downloadLikedTracks = AppStorage(wrappedValue: true, profile.downloadLikedTracksKey)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Настройки").font(.title2.bold())
+            Toggle("Скачивать понравившиеся треки на это устройство", isOn: $downloadLikedTracks)
+                .toggleStyle(.switch)
+            HStack {
+                Spacer()
+                Button("Готово") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+        .background(MusicTheme.panel)
     }
 }
 
