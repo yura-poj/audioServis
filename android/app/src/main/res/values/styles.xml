@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Аудиосервис</string>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">@color/music_accent</item>
+        <item name="android:windowBackground">@color/music_canvas</item>
+        <item name="android:statusBarColor">@color/music_panel</item>
+        <item name="android:navigationBarColor">@color/music_canvas</item>
+        <item name="android:alertDialogTheme">@style/MusicDialog</item>
+    </style>
+    <style name="MusicDialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">@color/music_accent</item>
+        <item name="android:colorBackground">@color/music_panel</item>
+        <item name="android:textColorPrimary">@color/music_text</item>
+        <item name="android:textColorSecondary">@color/music_muted</item>
+    </style>
+</resources>

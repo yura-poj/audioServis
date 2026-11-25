@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#1B1B1B</color>
+    <color name="music_canvas">#101010</color>
+    <color name="music_panel">#1A1A1A</color>
+    <color name="music_raised">#2E2E2E</color>
+    <color name="music_divider">#343434</color>
+    <color name="music_text">#F5F5F5</color>
+    <color name="music_muted">#B3B3B3</color>
+    <color name="music_accent">#FFCC00</color>
+</resources>

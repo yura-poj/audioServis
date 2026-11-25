@@ -1,0 +1,9 @@
+/dist/
+/data/
+/android/.gradle/
+/android/.kotlin/
+/android/local.properties
+/android/**/build/
+/macos/.build/
+/.env
+.DS_Store
