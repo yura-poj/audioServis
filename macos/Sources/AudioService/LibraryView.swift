@@ -29,11 +29,16 @@ struct LibraryView: View {
         .onChange(of: model.selection) { _, _ in
             Task { await model.refreshSelection() }
         }
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.mp3]) { outcome in
-            if case .success(let url) = outcome {
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.mp3], allowsMultipleSelection: true) { outcome in
+            if case .success(let urls) = outcome {
                 let playlist = uploadPlaylist
-                Task { await model.upload(url, playlist: playlist) }
+                Task { await model.upload(urls, playlist: playlist) }
             }
+        }
+        .alert("Результат загрузки", isPresented: Binding(get: { model.uploadSummary != nil }, set: { if !$0 { model.uploadSummary = nil } })) {
+            Button("OK") { model.uploadSummary = nil }
+        } message: {
+            Text(model.uploadSummary ?? "")
         }
         .sheet(isPresented: $connectionOpen) {
             ConnectView(initialAddress: model.profile?.base.absoluteString ?? "") { address, key in

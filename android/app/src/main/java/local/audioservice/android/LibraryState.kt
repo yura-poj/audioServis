@@ -14,7 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import java.io.IOException
-import java.io.InputStream
+import android.provider.OpenableColumns
 import java.util.UUID
 import java.util.concurrent.Executors
 
@@ -46,6 +46,7 @@ internal class LibraryState(private val app: Application) {
         private set
     var error: String? = null
         private set
+    var uploadSummary: String? = null
     var connecting: Boolean = false
         private set
 
@@ -151,6 +152,7 @@ internal class LibraryState(private val app: Application) {
         set(enabled) { profile?.let { accounts.setDownloadLikedTracks(it, enabled) } }
 
     private fun selectAccount(selected: Profile?, client: APIClient?) {
+        uploadSummary = null
         epoch = UUID.randomUUID()
         connecting = false
         controller?.stop()
@@ -206,10 +208,29 @@ internal class LibraryState(private val app: Application) {
     fun membership(track: Track, playlist: String, add: Boolean) =
         mutate { it.membership(track.id, playlist, add) }
 
-    fun upload(title: String, playlist: String?, source: () -> InputStream?) {
-        mutate { client ->
-            val input = source() ?: throw IOException("Не удалось открыть файл.")
-            input.use { client.upload(it, title, playlist) }
+    fun upload(files: List<Uri>, playlist: String?) {
+        val resolver = app.contentResolver
+        request({ client ->
+            val failed = mutableListOf<String>()
+            for (uri in files) {
+                if (api !== client) break
+                var name = uri.lastPathSegment ?: uri.toString()
+                try {
+                    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                        if (it.moveToFirst()) name = it.getString(0) ?: name
+                    }
+                    val input = resolver.openInputStream(uri) ?: throw IOException("Не удалось открыть файл.")
+                    input.use { client.upload(it, name.substringBeforeLast('.'), playlist) }
+                } catch (e: Exception) {
+                    failed.add(name)
+                }
+            }
+            failed
+        }) { failed ->
+            val count = files.size - failed.size
+            uploadSummary = "Загружено $count из ${files.size}." +
+                if (failed.isEmpty()) "" else "\nНе удалось загрузить:\n" + failed.joinToString("\n")
+            if (count > 0) refresh()
         }
     }
 

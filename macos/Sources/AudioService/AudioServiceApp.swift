@@ -36,6 +36,8 @@ final class LibraryModel: ObservableObject {
     @Published var selection: LibrarySection? = .library
     @Published private(set) var error: String?
 
+    @Published var uploadSummary: String?
+
     private var selectedPlaylistID: String?
     private weak var offline: OfflineLibrary?
     private weak var playback: Playback?
@@ -122,11 +124,25 @@ final class LibraryModel: ObservableObject {
         await mutate { _ = try await $0.renameTrack(track.id, title: title) }
     }
 
-    func upload(_ url: URL, playlist: String?) async {
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-        let title = url.deletingPathExtension().lastPathComponent
-        await mutate { _ = try await $0.upload(url, title: title, playlist: playlist) }
+    func upload(_ urls: [URL], playlist: String?) async {
+        guard !urls.isEmpty else { return }
+        await run { api, session in
+            var failed: [String] = []
+            for url in urls {
+                guard self.session == session else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    _ = try await api.upload(url, title: url.deletingPathExtension().lastPathComponent, playlist: playlist)
+                } catch {
+                    failed.append(url.lastPathComponent)
+                }
+            }
+            guard self.session == session else { return }
+            let count = urls.count - failed.count
+            uploadSummary = "Загружено \(count) из \(urls.count)." + (failed.isEmpty ? "" : "\nНе удалось загрузить:\n" + failed.joined(separator: "\n"))
+            if count > 0 { await refresh() }
+        }
     }
 
     func setMembership(_ track: Track, playlist: String, add: Bool) async {
@@ -177,6 +193,7 @@ final class LibraryModel: ObservableObject {
     }
 
     private func replaceProfile(_ profile: Profile?, key: String?) {
+        uploadSummary = nil
         session = UUID()
         playback?.stop()
         offline?.select(profile)

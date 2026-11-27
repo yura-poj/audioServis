@@ -9,12 +9,10 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.OpenableColumns
 import android.text.InputType
 import android.text.TextUtils
 import android.text.format.DateUtils
@@ -112,6 +110,11 @@ class MainActivity : Activity() {
         if (profile == null) {
             showLogin()
             return
+        }
+        model.uploadSummary?.let { summary ->
+            model.uploadSummary = null
+            AlertDialog.Builder(this).setTitle("Результат загрузки").setMessage(summary)
+                .setPositiveButton("OK", null).show()
         }
         loginForm = null
         val scrollY = if (screenKey == nextKey) scroll?.scrollY ?: 0 else 0
@@ -508,7 +511,7 @@ class MainActivity : Activity() {
     private fun chooseFile(playlist: String?) {
         uploadPlaylist = playlist
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("audio/mpeg")
+            .setType("audio/mpeg").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
         startActivityForResult(intent, PICK_MP3)
     }
 
@@ -516,15 +519,10 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != PICK_MP3 || resultCode != RESULT_OK) return
-        val uri = data?.data ?: return
-        val name = filename(uri).removeSuffix(".mp3").removeSuffix(".MP3")
-        model.upload(name, uploadPlaylist) { contentResolver.openInputStream(uri) }
+        val clip = data?.clipData
+        val files = if (clip != null) (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri } else listOfNotNull(data?.data)
+        if (files.isNotEmpty()) model.upload(files, uploadPlaylist)
     }
-
-    private fun filename(uri: Uri): String =
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-            if (it.moveToFirst()) it.getString(0) else null
-        } ?: "Трек MP3"
 
     private fun visibleTracks(): List<Track> = when (tab) {
         Tab.LIBRARY -> model.tracks
