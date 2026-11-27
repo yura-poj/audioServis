@@ -46,7 +46,6 @@ func NewWithAnalyzer(database *store.Store, files *media.Files, wake chan<- stru
 	mux.HandleFunc("DELETE /api/v1/tracks/{id}", s.authorize(false, s.deleteTrack))
 	mux.HandleFunc("PUT /api/v1/tracks/{id}/like", s.authorize(false, s.like))
 	mux.HandleFunc("DELETE /api/v1/tracks/{id}/like", s.authorize(false, s.like))
-	mux.HandleFunc("POST /api/v1/wave/next", s.authorize(false, s.nextWave))
 	mux.HandleFunc("GET /api/v1/media/{id}", s.authorize(true, s.serveAudio))
 	mux.HandleFunc("PUT /api/v1/history/{id}", s.authorize(false, s.recordPlay))
 	mux.HandleFunc("GET /api/v1/history", s.authorize(false, s.history))

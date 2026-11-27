@@ -26,6 +26,15 @@ type result struct {
 	err    error
 }
 
+func TestServerRoutesInitialize(t *testing.T) {
+	handler := httpapi.New(nil, nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/wave/next", nil))
+	if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Allow") != "POST" {
+		t.Fatalf("wave route: status %d, Allow %q", response.Code, response.Header().Get("Allow"))
+	}
+}
+
 func TestPersonalLibrary(t *testing.T) {
 	dsn := os.Getenv("AUDIOSERVICE_TEST_DATABASE_URL")
 	if dsn == "" {
