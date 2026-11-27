@@ -10,7 +10,7 @@ final class Playback: ObservableObject {
 
     private struct Entry {
         let track: Track
-        let asset: AVAsset
+        let makeAsset: () -> AVAsset
     }
 
     let history = ListeningHistory()
@@ -22,6 +22,8 @@ final class Playback: ObservableObject {
     private var terminalObservers = Set<AnyCancellable>()
     private let player = AVQueuePlayer()
     private var entries: [Entry] = []
+    private let queueLimit = 2
+    private var nextIndex = 0
     private var indices: [ObjectIdentifier: Int] = [:]
     private var currentIndex = 0
     private var currentObservation: NSKeyValueObservation?
@@ -70,15 +72,78 @@ final class Playback: ObservableObject {
         }
     }
 
+    private var waveClient: APIClient?
+    private var waveGeneration = UUID()
+    private var waveExcluded = Set<String>()
+    private var waveRequest: Task<Void, Never>?
+    private var preparedFor: AVPlayerItem?
+
+    private func endWave() {
+        waveGeneration = UUID()
+        waveRequest?.cancel()
+        waveRequest = nil
+        waveExcluded.removeAll()
+        preparedFor = nil
+        waveClient = nil
+    }
+
+    func startWave(_ api: APIClient) {
+        guard waveClient == nil else { return }
+        waveClient = api
+        updateWave()
+    }
+
+    private func updateWave() {
+        guard let api = waveClient, waveRequest == nil else { return }
+        let item = player.currentItem
+        if let item, item === preparedFor { return }
+        let generation = waveGeneration
+        let anchor = item.flatMap { indices[ObjectIdentifier($0)] }.map { entries[$0].track.id }
+        if let anchor { waveExcluded.insert(anchor) }
+        let excluded = waveExcluded
+        waveRequest = Task { @MainActor in
+            do {
+                let next = try await api.nextWave(current: anchor, excluded: excluded)
+                guard generation == waveGeneration else { return }
+                waveRequest = nil
+                if player.currentItem != nil && player.currentItem !== item { updateWave(); return }
+                // Preserve the currently playing item and replace only its continuation.
+                let live = player.currentItem
+                for queued in player.items() where queued !== live { player.remove(queued) }
+                if let live, let index = indices[ObjectIdentifier(live)] {
+                    entries = Array(entries.prefix(index + 1))
+                } else {
+                    entries.removeAll()
+                }
+                nextIndex = entries.count
+                guard let next else { endWave(); return }
+                waveExcluded.insert(next.id)
+                preparedFor = live
+                entries.append(Entry(track: next, makeAsset: { api.asset(next) }))
+                if live == nil {
+                    if anchor == nil { queueID = UUID(); startReason = "selection" }
+                    else { startReason = "automatic" }
+                    fillQueue()
+                    player.play()
+                } else { fillQueue() }
+            } catch {
+                guard generation == waveGeneration else { return }
+                endWave()
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
     func play(_ tracks: [Track], from startID: String? = nil, offline: OfflineLibrary, api: APIClient?, reason: String = "queue") {
+        endWave()
         manualTransition("skipped")
         queueID = UUID()
         startReason = reason
         entries = tracks.compactMap { track in
             if let local = offline.file(track) {
-                return Entry(track: track, asset: AVURLAsset(url: local))
+                return Entry(track: track, makeAsset: { AVURLAsset(url: local) })
             }
-            return api.map { Entry(track: track, asset: $0.asset(track)) }
+            return api.map { client in Entry(track: track, makeAsset: { client.asset(track) }) }
         }
         guard !entries.isEmpty else {
             stop()
@@ -98,6 +163,7 @@ final class Playback: ObservableObject {
     }
 
     func previous() {
+        if waveClient != nil { return }
         guard !entries.isEmpty else { return }
         manualTransition("skipped")
         startReason = "skip"
@@ -113,6 +179,7 @@ final class Playback: ObservableObject {
     }
 
     func stop() {
+        endWave()
         manualTransition("stopped")
         for old in awaitingEnd.values { old.finish("interrupted") }
         awaitingEnd.removeAll()
@@ -131,15 +198,23 @@ final class Playback: ObservableObject {
         player.removeAllItems()
         indices.removeAll()
         error = nil
-        var previous: AVPlayerItem?
-        for index in start..<entries.count {
-            let item = AVPlayerItem(asset: entries[index].asset)
-            player.insert(item, after: previous)
-            indices[ObjectIdentifier(item)] = index
-            previous = item
-        }
+        nextIndex = start
+        fillQueue()
         readCurrentItem()
         player.play()
+    }
+
+    private func fillQueue() {
+        var queued = player.items()
+        let liveIDs = Set(queued.map(ObjectIdentifier.init))
+        indices = indices.filter { liveIDs.contains($0.key) }
+        while queued.count < queueLimit && nextIndex < entries.count {
+            let item = AVPlayerItem(asset: entries[nextIndex].makeAsset())
+            indices[ObjectIdentifier(item)] = nextIndex
+            nextIndex += 1
+            player.insert(item, after: queued.last)
+            queued.append(item)
+        }
     }
 
     private func readCurrentItem() {
@@ -149,8 +224,10 @@ final class Playback: ObservableObject {
             current = nil
             return
         }
+        fillQueue()
         currentIndex = index
         current = entries[index].track
+        updateWave()
         error = nil
         updatePlaybackState()
         itemObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] _, _ in

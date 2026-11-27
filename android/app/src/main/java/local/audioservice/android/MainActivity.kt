@@ -238,6 +238,7 @@ class MainActivity : Activity() {
                 val shuffle = control("Перемешать всё", tone = ButtonTone.PRIMARY) { model.shuffle() }
                 shuffle.isEnabled = model.tracks.isNotEmpty()
                 actions.addView(shuffle)
+                actions.addView(control("Моя волна") { model.startWave() })
                 actions.addView(control("Загрузить MP3") { chooseFile(null) })
             }
             tab == Tab.PLAYLISTS && playlist == null ->

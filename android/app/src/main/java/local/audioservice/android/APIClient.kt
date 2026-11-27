@@ -75,6 +75,13 @@ internal class APIClient(val base: String, val key: String) {
         jsonRequest(if (liked) "PUT" else "DELETE", api("tracks/$track/like"))
     )
 
+    fun nextWave(current: String?, excluded: List<String>): Track? {
+        val body = JSONObject().put("current_track_id", current ?: JSONObject.NULL)
+            .put("excluded_track_ids", org.json.JSONArray(excluded))
+        val result = jsonRequest("POST", api("wave/next"), body)
+        return if (result.length() == 0) null else Track.parse(result)
+    }
+
     fun sendPlay(play: ListeningPlay) {
         try { jsonRequest("PUT", api("history/${play.id}"), play.json()) }
         catch (_: MissingHistoryTrack) { /* The owner deleted this track before delivery. */ }

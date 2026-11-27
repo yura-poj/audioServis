@@ -82,6 +82,10 @@ func (s *server) upload(w http.ResponseWriter, r *http.Request, user store.User)
 		respondError(w, err)
 		return
 	}
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
 	writeJSON(w, http.StatusCreated, track)
 }
 
@@ -138,6 +142,10 @@ func (s *server) serveAudio(w http.ResponseWriter, r *http.Request, user store.U
 		respondError(w, err)
 		return
 	}
+	s.serveTrackFile(w, r, track)
+}
+
+func (s *server) serveTrackFile(w http.ResponseWriter, r *http.Request, track store.Track) {
 	file, err := s.files.Read(track.ID)
 	if errors.Is(err, os.ErrNotExist) {
 		respondError(w, store.ErrNotFound)

@@ -106,6 +106,24 @@ func TestPersonalLibrary(t *testing.T) {
 		return readJSON[store.Track](t, body)
 	}
 	trackA := upload("Песня + A", playlistA.ID)
+	waveBody := func(id string) io.Reader {
+		b, err := json.Marshal(map[string]any{"current_track_id": id, "excluded_track_ids": []string{id}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bytes.NewReader(b)
+	}
+	check(request("POST", "/wave/next", waveBody(trackA.ID), authB), 404)
+	check(request("POST", "/wave/next", waveBody(trackA.ID), authA), 409)
+	if err := db.SaveEmbedding(ctx, trackA.ID, make([]byte, 5120)); err != nil {
+		t.Fatal(err)
+	}
+	check(request("POST", "/wave/next", waveBody(trackA.ID), authA), 204)
+	check(request("POST", "/wave/next", bytes.NewReader([]byte("{}")), authB), 204)
+	waveFirst := readJSON[store.Track](t, check(request("POST", "/wave/next", bytes.NewReader([]byte("{}")), authA), 200))
+	if waveFirst.ID != trackA.ID {
+		t.Fatal("unexpected wave recommendation", waveFirst.ID)
+	}
 	if trackA.Title != "Песня + A" || trackA.SizeBytes != int64(len(payload)) {
 		t.Fatalf("incorrect upload metadata: %+v", trackA)
 	}

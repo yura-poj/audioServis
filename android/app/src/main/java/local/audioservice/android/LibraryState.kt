@@ -98,6 +98,11 @@ internal class LibraryState(private val app: Application) {
                 controller = player
                 player.addListener(object : Player.Listener {
                     override fun onEvents(player: Player, events: Player.Events) {
+                        if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) && player.playbackState == Player.STATE_IDLE) {
+                            endWave()
+                        } else if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
+                            updateWave()
+                        }
                         changed()
                     }
 
@@ -152,6 +157,7 @@ internal class LibraryState(private val app: Application) {
         set(enabled) { profile?.let { accounts.setDownloadLikedTracks(it, enabled) } }
 
     private fun selectAccount(selected: Profile?, client: APIClient?) {
+        endWave()
         uploadSummary = null
         epoch = UUID.randomUUID()
         connecting = false
@@ -243,6 +249,77 @@ internal class LibraryState(private val app: Application) {
         }
     }
 
+    private var waveSession: UUID? = null
+    private var waveLoading = false
+    private var waveAnchor: QueueEntry? = null
+    private val waveUsed = mutableSetOf<String>()
+
+    private fun endWave() {
+        waveSession = null
+        waveLoading = false
+        waveAnchor = null
+        waveUsed.clear()
+    }
+
+    fun startWave() {
+        if (waveSession != null) return
+        if (controller == null || api == null) {
+            error = "Для волны нужны подключение к серверу и готовый плеер."
+            preparePlayback()
+            changed()
+            return
+        }
+        waveSession = UUID.randomUUID()
+        updateWave()
+    }
+
+    private fun updateWave() {
+        val session = waveSession ?: return
+        val player = controller ?: return
+        val client = api ?: return
+        val anchor = player.currentMediaItem?.mediaId?.takeUnless { player.playbackState == Player.STATE_ENDED }
+        fun entry() = player.currentMediaItem?.mediaMetadata?.extras?.getString("queue")?.let { QueueEntry(it, player.currentMediaItemIndex) }
+        val originalEntry = entry()
+        if (waveLoading || (anchor != null && originalEntry == waveAnchor)) return
+        if (anchor != null) waveUsed.add(anchor)
+        val excluded = waveUsed.toList()
+        waveLoading = true
+        requests.execute {
+            val result = runCatching { client.nextWave(anchor, excluded) }
+            main.post {
+                if (waveSession != session) return@post
+                waveLoading = false
+                val live = player.currentMediaItem?.takeUnless { player.playbackState == Player.STATE_ENDED }
+                if (live != null && (entry() != originalEntry || live.mediaId != anchor)) { updateWave(); return@post }
+                result.onSuccess { next ->
+                    waveAnchor = if (live == null) null else originalEntry
+                    val from = player.currentMediaItemIndex + 1
+                    val extras = Bundle(live?.mediaMetadata?.extras ?: Bundle()).apply {
+                        putString("scope", profile?.scope())
+                        if (!containsKey("queue")) putString("queue", UUID.randomUUID().toString())
+                        putString("reason", if (anchor == null) "selection" else "automatic")
+                    }
+                    if (next == null) {
+                        endWave()
+                        if (from in 0 until player.mediaItemCount) player.removeMediaItems(from, player.mediaItemCount)
+                    } else {
+                        waveUsed.add(next.id)
+                        val item = MediaItem.Builder().setMediaId(next.id).setUri(client.media(next.id))
+                            .setMediaMetadata(MediaMetadata.Builder().setTitle(next.title).setExtras(extras).build()).build()
+                        if (live == null) {
+                            player.setMediaItem(item)
+                            player.prepare()
+                            player.play()
+                        } else {
+                            player.replaceMediaItems(from, player.mediaItemCount, listOf(item))
+                        }
+                    }
+                }.onFailure { endWave(); error = it.localizedMessage }
+                changed()
+            }
+        }
+    }
+
     fun shuffle() {
         request({ it.tracks() }) { catalog ->
             tracks = catalog
@@ -252,6 +329,7 @@ internal class LibraryState(private val app: Application) {
     }
 
     fun play(tracks: List<Track>, startId: String? = null, localOnly: Boolean = false, reason: String = if (startId == null) "queue" else "selection") {
+        endWave()
         val player = controller
         if (player == null) {
             preparePlayback()
@@ -293,6 +371,7 @@ internal class LibraryState(private val app: Application) {
     }
 
     fun previous() {
+        if (waveSession != null) return
         controller?.seekToPreviousMediaItem()
     }
 

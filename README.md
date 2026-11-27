@@ -119,3 +119,22 @@ curl --fail-with-body "$AUDIO_BASE/api/v1/tracks?title=Demo&playlist_id=$PLAYLIS
 go test ./...
 go vet ./...
 ```
+
+## Моя волна
+
+В медиатеке Android или macOS нажмите «Моя волна». Если песня уже играет, она доиграет с текущей позиции. Сервер подбирает продолжение из вашего каталога по сходству звучания и всей синхронизированной истории с полуночи по времени сервера. Волна учитывает дослушивания и быстрые пропуски. Она заканчивается, когда треки исчерпаны. Выбор обычной очереди завершает волну.
+
+Серверу нужен один фоновый анализатор. Установите модель Discogs-EffNet multi v1 и CPU runtime до запуска миграции и сервера. Пример для Python 3.11 и macOS arm64:
+
+```sh
+python3.11 -m venv .wave-env
+.wave-env/bin/pip install -r internal/media/embedding/requirements.txt
+mkdir -p data/models
+curl -fL https://essentia.upf.edu/models/feature-extractors/discogs-effnet/discogs_multi_embeddings-effnet-bs64-1.onnx -o data/models/discogs_multi_embeddings-effnet-bs64-1.onnx
+export AUDIOSERVICE_WAVE_MODEL="$PWD/data/models/discogs_multi_embeddings-effnet-bs64-1.onnx"
+export AUDIOSERVICE_WAVE_PYTHON="$PWD/.wave-env/bin/python"
+```
+
+SHA-256 весов: `65cfde30655a939de420e5c09a49a43648336fdbbf79eb3af6d3b40176339d8e`. При обновлении остановите старый сервер, выполните штатную миграцию и запустите новую версию. Фоновые задания для существующих MP3 создаются миграцией, для новых – при загрузке. Обработчик обслуживает по одному файлу, хранит один вектор на запись и продолжает незавершённую обработку после перезапуска. Все вычисления выполняются на сервере. [Описание модели и условия использования](https://essentia.upf.edu/models.html#discogs-effnet)
+
+Авторизованный запрос `POST /api/v1/wave/next` принимает `current_track_id` (UUID или null) и `excluded_track_ids` (ID уже выбранных песен). Ответ 200 содержит трек, 204 означает конец волны, 409 означает ожидание анализа, 422 сообщает об ошибке анализа.

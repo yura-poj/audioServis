@@ -238,6 +238,9 @@ func (s *Store) CreateTrack(ctx context.Context, userID, playlistID, title strin
 			return Track{}, false, err
 		}
 	}
+	if _, err := tx.Exec(ctx, "INSERT INTO track_embeddings(track_id) VALUES ($1)", track.ID); err != nil {
+		return Track{}, false, err
+	}
 	if err := publish(track); err != nil {
 		return Track{}, false, err
 	}

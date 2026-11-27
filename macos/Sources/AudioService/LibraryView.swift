@@ -213,6 +213,9 @@ struct LibraryView: View {
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
+            if selection == .library {
+                Button("Моя волна") { model.startWave() }.buttonStyle(MusicActionStyle())
+            }
             Button {
                 if selection == .library {
                     Task { await model.shuffle() }

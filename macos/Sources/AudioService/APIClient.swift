@@ -133,6 +133,18 @@ struct APIClient: Sendable {
         try await decode("tracks/\(id)/like", method: liked ? "PUT" : "DELETE")
     }
 
+    func nextWave(current: String?, excluded: Set<String>) async throws -> Track? {
+        var request = authorized(endpoint("wave/next"), method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "current_track_id": current as Any, "excluded_track_ids": Array(excluded)
+        ])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (body, reply) = try await Self.session.data(for: request)
+        try check(reply, body: body)
+        if (reply as? HTTPURLResponse)?.statusCode == 204 { return nil }
+        return try decoder().decode(Track.self, from: body)
+    }
+
     func sendPlay(_ id: String, snapshot: ListeningSnapshot) async throws {
         var request = authorized(endpoint("history/\(id)"), method: "PUT")
         request.httpBody = try JSONEncoder().encode(snapshot)

@@ -182,6 +182,10 @@ final class LibraryModel: ObservableObject {
         playback.play(list, from: id, offline: offline, api: api, reason: reason ?? (id == nil ? "queue" : "selection"))
     }
 
+    func startWave() {
+        do { playback?.startWave(try client()) } catch { self.error = error.localizedDescription }
+    }
+
     func shuffle() async {
         await run { api, session in
             let catalog = try await api.tracks()

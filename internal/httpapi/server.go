@@ -17,13 +17,19 @@ import (
 type server struct {
 	store *store.Store
 	files *media.Files
+	wake  chan<- struct{}
 }
 
 type action func(http.ResponseWriter, *http.Request, store.User)
 
 func New(database *store.Store, files *media.Files) http.Handler {
-	s := &server{store: database, files: files}
+	return NewWithAnalyzer(database, files, nil)
+}
+
+func NewWithAnalyzer(database *store.Store, files *media.Files, wake chan<- struct{}) http.Handler {
+	s := &server{store: database, files: files, wake: wake}
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/wave/next", s.authorize(false, s.nextWave))
 	mux.HandleFunc("GET /api/v1/me", s.authorize(false, func(w http.ResponseWriter, _ *http.Request, user store.User) {
 		writeJSON(w, http.StatusOK, user)
 	}))
@@ -40,6 +46,7 @@ func New(database *store.Store, files *media.Files) http.Handler {
 	mux.HandleFunc("DELETE /api/v1/tracks/{id}", s.authorize(false, s.deleteTrack))
 	mux.HandleFunc("PUT /api/v1/tracks/{id}/like", s.authorize(false, s.like))
 	mux.HandleFunc("DELETE /api/v1/tracks/{id}/like", s.authorize(false, s.like))
+	mux.HandleFunc("POST /api/v1/wave/next", s.authorize(false, s.nextWave))
 	mux.HandleFunc("GET /api/v1/media/{id}", s.authorize(true, s.serveAudio))
 	mux.HandleFunc("PUT /api/v1/history/{id}", s.authorize(false, s.recordPlay))
 	mux.HandleFunc("GET /api/v1/history", s.authorize(false, s.history))
@@ -104,7 +111,10 @@ func respondError(w http.ResponseWriter, err error) {
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, value any) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+	return decodeLimitedBody(w, r, value, 16<<10)
+}
+func decodeLimitedBody(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err == nil {
 		var extra any

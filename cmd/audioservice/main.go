@@ -15,6 +15,7 @@ import (
 
 	"audioservice/internal/httpapi"
 	"audioservice/internal/media"
+	"audioservice/internal/media/embedding"
 	"audioservice/internal/store"
 )
 
@@ -101,8 +102,18 @@ func serve(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
+		wake := make(chan struct{}, 1)
+		workerCtx, cancelWorker := context.WithCancel(ctx)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if err := embedding.Run(workerCtx, database, files, wake); err != nil && workerCtx.Err() == nil {
+				log.Printf("wave analyzer: %v", err)
+			}
+		}()
+		defer func() { cancelWorker(); <-done }()
 		server := &http.Server{
-			Handler:           httpapi.New(database, files),
+			Handler:           httpapi.NewWithAnalyzer(database, files, wake),
 			ReadHeaderTimeout: 10 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		}

@@ -13,6 +13,9 @@ var initialSchema string
 //go:embed migrations/002_listening_history.sql
 var historySchema string
 
+//go:embed migrations/003_track_embeddings.sql
+var embeddingSchema string
+
 func (s *Store) Migrate(ctx context.Context) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(487398011)`); err != nil {
@@ -26,7 +29,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		for i, schema := range []string{initialSchema, historySchema} {
+		for i, schema := range []string{initialSchema, historySchema, embeddingSchema} {
 			version := i + 1
 			var applied bool
 			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&applied); err != nil {
