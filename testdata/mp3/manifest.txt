@@ -1,0 +1,14 @@
+cbr.mp3 true
+invalid-tag-length.mp3 false
+mpeg2.mp3 true
+mpeg25.mp3 true
+tag-only.mp3 false
+tagged.mp3 true
+trailing.mp3 false
+truncated.mp3 false
+vbr.mp3 true
+wrong-format.mp3 false
+picture-tag.mp3 true
+free-format.mp3 false
+bad-footer.mp3 false
+empty.mp3 false

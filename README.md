@@ -76,7 +76,7 @@ curl --fail-with-body "$AUDIO_BASE/api/v1/tracks?title=Demo&playlist_id=$PLAYLIS
 - `GET /me` возвращает текущий аккаунт.
 - `GET /playlists` и `POST /playlists` читают список и создают плейлист. `PATCH /playlists/{id}` меняет `name`, `DELETE /playlists/{id}` удаляет плейлист.
 - `GET /playlists/{id}/tracks` возвращает треки в порядке добавления. `PUT` и `DELETE /playlists/{id}/tracks/{track_id}` добавляют и убирают связь с существующим треком.
-- `GET /tracks` возвращает личную медиатеку. `POST /tracks` принимает MP3 до 64 МиБ. `PATCH /tracks/{id}` меняет `title`, `DELETE /tracks/{id}` удаляет трек и его связи.
+- `GET /tracks` возвращает личную медиатеку. `POST /tracks` принимает MP3 до 64 МиБ включительно. Сервер проверяет кадры MPEG-1/2/2.5 Layer III, поддерживает CBR, VBR, начальный ID3v2.2–2.4 и конечный ID3v1. Повреждённая структура, free-format и посторонние данные между кадрами или в конце приводят к ответу `422 invalid_mp3`. `PATCH /tracks/{id}` меняет `title`, `DELETE /tracks/{id}` удаляет трек и его связи.
 - `PUT /tracks/{id}/like` ставит лайк, `DELETE /tracks/{id}/like` снимает. При включённом автоскачивании клиент сохраняет MP3 на устройстве, где поставили лайк.
 - `GET /media/{track_id}` отдаёт MP3 и поддерживает `Range`. `HEAD` возвращает заголовки файла.
 

@@ -59,6 +59,14 @@ func (s *server) upload(w http.ResponseWriter, r *http.Request, user store.User)
 		fail(w, http.StatusBadRequest, "empty_upload", "The MP3 body is empty")
 		return
 	}
+	if err := media.ValidateMP3(tempPath, size); err != nil {
+		if errors.Is(err, media.ErrInvalidMP3) {
+			fail(w, http.StatusUnprocessableEntity, "invalid_mp3", "Формат MP3 не поддерживается или файл повреждён.")
+		} else {
+			respondError(w, err)
+		}
+		return
+	}
 	var publishedID string
 	track, keepFile, err := s.store.CreateTrack(r.Context(), user.ID, playlistID, title, size, func(track store.Track) error {
 		if err := s.files.Publish(tempPath, track.ID); err != nil {

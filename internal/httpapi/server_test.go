@@ -95,9 +95,10 @@ func TestPersonalLibrary(t *testing.T) {
 	check(request("GET", "/playlists/"+foreign.ID+"/tracks", nil, authA), 404)
 	check(request("GET", "/me", nil, nil), 401)
 
-	// The full-file and range assertions use a known payload. Actual decoding
-	// with generated MP3 fixtures is covered by the client smoke checks.
-	payload := []byte("ID3fixture-audio")
+	payload, err := os.ReadFile("../../testdata/mp3/cbr.mp3")
+	if err != nil {
+		t.Fatal(err)
+	}
 	upload := func(title, playlistID string) store.Track {
 		t.Helper()
 		path := "/tracks?title=" + url.QueryEscape(title) + "&playlist_id=" + playlistID
